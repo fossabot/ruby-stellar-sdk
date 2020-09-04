@@ -5,19 +5,30 @@ module Stellar
     # Helper method to create a valid {SEP0010}[https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md]
     # challenge transaction which you can use for Stellar Web Authentication.
     #
-    # @param server [Stellar::KeyPair] Keypair for server's signing account.
-    # @param client [Stellar::KeyPair] Keypair for the account whishing to authenticate with the server.
-    # @param anchor_name [String] Anchor's name to be used in the manage_data key.
+    # @param server [Stellar::KeyPair] Keypair for server's signing account (SIGNING_KEY in service's stellar.toml).
+    # @param client [Stellar::KeyPair] Keypair for the account trying to authenticate with the server.
+    # @param home_domain [String] Anchor's name to be used in the manage_data key.
     # @param timeout [Integer] Challenge duration (default to 5 minutes).
     #
     # @return [String] A base64 encoded string of the raw TransactionEnvelope xdr struct for the transaction.
     #
     # = Example
     #
-    #   Stellar::SEP10.build_challenge_tx(server: server, client: user, anchor_name: anchor, timeout: timeout)
+    #   server = Stellar::KeyPair.random # this should be the SIGNING_KEY from your stellar.toml
+    #   user = Stellar::KeyPair.from_address('G...')
+    #   Stellar::SEP10.build_challenge_tx(server: server, client: user, home_domain: 'example.com', timeout: 300)
     #
     # @see {SEP0010: Stellar Web Authentication}[https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0010.md]
-    def self.build_challenge_tx(server:, client:, anchor_name:, timeout: 300)
+    def self.build_challenge_tx(server:, client:, home_domain: nil, timeout: 300, **options)
+      if home_domain.blank? && options.key?(:anchor_name)
+        Stellar::Deprecation.warn <<~MSG
+          SEP-10 v2.0.0 requires usage of service home domain instead of anchor name in the challenge transaction. 
+          Please update your implementation to use `Stellar::SEP10.build_challenge_tx(..., home_domain: 'example.com')`.
+          Using `anchor_name` parameter makes your service incompatible with SEP10-2.0 clients, support for this parameter
+          is deprecated and will be removed in the next major release of stellar-base.
+        MSG
+        home_domain = options[:anchor_name]
+      end
       # The value must be 64 bytes long. It contains a 48 byte
       # cryptographic-quality random string encoded using base64 (for a total of
       # 64 bytes after encoding).
@@ -35,7 +46,7 @@ module Stellar
         time_bounds: time_bounds
       ).add_operation(
         Stellar::Operation.manage_data(
-          name: "#{anchor_name} auth",
+          name: "#{home_domain} auth",
           value: value,
           source_account: client
         )
@@ -62,10 +73,11 @@ module Stellar
     # = Example
     #
     #   sep10 = Stellar::SEP10
-    #   challenge = sep10.build_challenge_tx(server: server, client: user, anchor_name: anchor, timeout: timeout)
-    #   envelope, client_address = sep10.read_challenge_tx(challenge: challenge, server: server)
+    #   server = Stellar::KeyPair.random # this should be the SIGNING_KEY from your stellar.toml
+    #   challenge = sep10.build_challenge_tx(server: server, client: user, home_domain: domain, timeout: timeout)
+    #   envelope, client_address = sep10.read_challenge_tx(server: server, challenge: challenge)
     #
-    def self.read_challenge_tx(challenge_xdr:, server:)
+    def self.read_challenge_tx(server:, challenge_xdr:)
       envelope = Stellar::TransactionEnvelope.from_xdr(challenge_xdr, "base64")
       transaction = envelope.tx
 
@@ -136,7 +148,7 @@ module Stellar
     # If verification succeeds a list of signers that were found is returned, excluding the server account ID.
     #
     # @param challenge_xdr [String] SEP0010 transaction challenge transaction in base64.
-    # @param server [Stellar::Keypair] keypair for server's account.
+    # @param server [Stellar::Keypair] server's signing key
     # @param signers [SetOf[String]] The signers of client account.
     #
     # @return [SetOf[String]]
@@ -145,26 +157,19 @@ module Stellar
     #     - The transaction is invalid according to Stellar::SEP10.read_challenge_tx.
     #     - One or more signatures in the transaction are not identifiable as the server account or one of the
     #       signers provided in the arguments.
-    def self.verify_challenge_tx_signers(
-      challenge_xdr:,
-      server:,
-      signers:
-    )
+    def self.verify_challenge_tx_signers(server:, challenge_xdr:, signers:)
       if signers.empty?
         raise InvalidSep10ChallengeError.new("No signers provided.")
       end
 
-      te, _ = read_challenge_tx(
-        challenge_xdr: challenge_xdr, server: server
-      )
+      te, _ = read_challenge_tx(challenge_xdr: challenge_xdr, server: server)
 
       # deduplicate signers and ignore non-G addresses
       client_signers = Set.new
       signers.each do |signer|
         # ignore server kp if passed
-        if signer == server.address
-          next
-        end
+        next if signer == server.address
+
         begin
           Stellar::Util::StrKey.check_decode(:account_id, signer)
         rescue
@@ -292,10 +297,7 @@ module Stellar
     # @param signers [SetOf[String]] The signers of client account.
     #
     # @return [SetOf[String]]
-    def self.verify_tx_signatures(
-      tx_envelope:,
-      signers:
-    )
+    def self.verify_tx_signatures(tx_envelope:, signers:)
       signatures = tx_envelope.signatures
       if signatures.empty?
         raise InvalidSep10ChallengeError.new("Transaction has no signatures.")
@@ -307,12 +309,8 @@ module Stellar
       signers.each do |signer|
         kp = Stellar::KeyPair.from_address(signer)
         tx_envelope.signatures.each_with_index do |sig, i|
-          if signatures_used.include?(i)
-            next
-          end
-          if sig.hint != kp.signature_hint
-            next
-          end
+          next if signatures_used.include?(i)
+          next if sig.hint != kp.signature_hint
           if kp.verify(sig.signature, tx_hash)
             signatures_used.add(i)
             signers_found.add(signer)
@@ -337,9 +335,7 @@ module Stellar
     def self.verify_tx_signed_by(tx_envelope:, keypair:)
       tx_hash = tx_envelope.tx.hash
       tx_envelope.signatures.any? do |sig|
-        if sig.hint != keypair.signature_hint
-          next
-        end
+        next if sig.hint != keypair.signature_hint
         keypair.verify(sig.signature, tx_hash)
       end
     end

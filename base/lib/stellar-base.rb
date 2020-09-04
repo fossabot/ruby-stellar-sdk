@@ -4,6 +4,7 @@ require "digest/sha2"
 require "active_support/core_ext/object/blank"
 require "active_support/core_ext/enumerable"
 require "active_support/core_ext/kernel/reporting"
+require "active_support/deprecation"
 
 # See ../generated for code-gen'ed files
 silence_warnings do
@@ -15,6 +16,7 @@ require_relative "stellar/base/version"
 Stellar::VERSION = Stellar::Base::VERSION
 
 Stellar::ONE = 1_0000000
+Stellar::Deprecation = ActiveSupport::Deprecation.new("next release", "stellar-base")
 
 # extensions onto the generated files must be loaded manually, below
 

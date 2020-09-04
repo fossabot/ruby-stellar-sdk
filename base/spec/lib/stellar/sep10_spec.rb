@@ -9,7 +9,7 @@ RSpec.describe Stellar::SEP10 do
   let(:transaction) { envelope.tx }
 
   subject do
-    sep10.build_challenge_tx(server: server, client: user, anchor_name: anchor, timeout: timeout)
+    sep10.build_challenge_tx(server: server, client: user, home_domain: anchor, timeout: timeout)
   end
 
   describe "#build_challenge_tx" do
@@ -32,7 +32,7 @@ RSpec.describe Stellar::SEP10 do
 
     describe "defaults" do
       subject do
-        sep10.build_challenge_tx(server: server, client: user, anchor_name: anchor)
+        sep10.build_challenge_tx(server: server, client: user, home_domain: anchor)
       end
 
       it "has a default timeout of 300 seconds (5 minutes)" do
@@ -185,12 +185,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -228,7 +228,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp_a,
-          anchor_name: "SDF",
+          home_domain: "www.stellar.org",
           timeout: 600
         ),
         "base64"
@@ -268,7 +268,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp_a,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -302,12 +302,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -338,12 +338,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -380,7 +380,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -412,12 +412,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -447,7 +447,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -478,7 +478,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -524,7 +524,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -556,7 +556,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -589,12 +589,12 @@ RSpec.describe Stellar::SEP10 do
       server_kp = Stellar::KeyPair.random
       client_kp = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -612,12 +612,12 @@ RSpec.describe Stellar::SEP10 do
       server_kp = Stellar::KeyPair.random
       client_kp = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -640,12 +640,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -678,12 +678,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -710,12 +710,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -748,12 +748,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -787,12 +787,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -827,7 +827,7 @@ RSpec.describe Stellar::SEP10 do
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp,
-        anchor_name: "SDF",
+        home_domain: "SDF",
         timeout: 600
       )
 
@@ -851,7 +851,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -880,7 +880,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp_a,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -914,7 +914,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -941,7 +941,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -974,7 +974,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -1001,7 +1001,7 @@ RSpec.describe Stellar::SEP10 do
         sep10.build_challenge_tx(
           server: server_kp,
           client: client_kp,
-          anchor_name: "SDF",
+          home_domain: "SDF",
           timeout: 600
         ),
         "base64"
@@ -1029,12 +1029,12 @@ RSpec.describe Stellar::SEP10 do
       client_kp_b = Stellar::KeyPair.random
       client_kp_c = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
@@ -1093,12 +1093,12 @@ RSpec.describe Stellar::SEP10 do
       server_kp = Stellar::KeyPair.random
       client_kp_a = Stellar::KeyPair.random
       timeout = 600
-      anchor_name = "SDF"
+      domain = "www.stellar.org"
 
       challenge = sep10.build_challenge_tx(
         server: server_kp,
         client: client_kp_a,
-        anchor_name: anchor_name,
+        home_domain: domain,
         timeout: timeout
       )
 
