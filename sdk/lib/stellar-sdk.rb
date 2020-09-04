@@ -5,7 +5,6 @@ module Stellar
   autoload :Account
   autoload :Amount
   autoload :Client
-  autoload :SEP10
 
   module Horizon
     extend ActiveSupport::Autoload

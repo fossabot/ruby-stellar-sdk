@@ -35,5 +35,6 @@ require_relative "./stellar/transaction_envelope"
 require_relative "./stellar/util/strkey"
 require_relative "./stellar/convert"
 require_relative "./stellar/networks"
+require_relative "./stellar/sep10"
 
 require_relative "./stellar/compat"
