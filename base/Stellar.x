@@ -2,6 +2,545 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
+namespace stellar
+{
+
+typedef opaque Hash[32];
+typedef opaque uint256[32];
+
+typedef unsigned int uint32;
+typedef int int32;
+
+typedef unsigned hyper uint64;
+typedef hyper int64;
+
+enum CryptoKeyType
+{
+    KEY_TYPE_ED25519 = 0,
+    KEY_TYPE_PRE_AUTH_TX = 1,
+    KEY_TYPE_HASH_X = 2,
+    // MUXED enum values for supported type are derived from the enum values
+    // above by ORing them with 0x100
+    KEY_TYPE_MUXED_ED25519 = 0x100
+};
+
+enum PublicKeyType
+{
+    PUBLIC_KEY_TYPE_ED25519 = KEY_TYPE_ED25519
+};
+
+enum SignerKeyType
+{
+    SIGNER_KEY_TYPE_ED25519 = KEY_TYPE_ED25519,
+    SIGNER_KEY_TYPE_PRE_AUTH_TX = KEY_TYPE_PRE_AUTH_TX,
+    SIGNER_KEY_TYPE_HASH_X = KEY_TYPE_HASH_X
+};
+
+union PublicKey switch (PublicKeyType type)
+{
+case PUBLIC_KEY_TYPE_ED25519:
+    uint256 ed25519;
+};
+
+union SignerKey switch (SignerKeyType type)
+{
+case SIGNER_KEY_TYPE_ED25519:
+    uint256 ed25519;
+case SIGNER_KEY_TYPE_PRE_AUTH_TX:
+    /* SHA-256 Hash of TransactionSignaturePayload structure */
+    uint256 preAuthTx;
+case SIGNER_KEY_TYPE_HASH_X:
+    /* Hash of random 256 bit preimage X */
+    uint256 hashX;
+};
+
+// variable size as the size depends on the signature scheme used
+typedef opaque Signature<64>;
+
+typedef opaque SignatureHint[4];
+
+typedef PublicKey NodeID;
+
+struct Curve25519Secret
+{
+    opaque key[32];
+};
+
+struct Curve25519Public
+{
+    opaque key[32];
+};
+
+struct HmacSha256Key
+{
+    opaque key[32];
+};
+
+struct HmacSha256Mac
+{
+    opaque mac[32];
+};
+}
+
+// Copyright 2015 Stellar Development Foundation and contributors. Licensed
+// under the Apache License, Version 2.0. See the COPYING file at the root
+// of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
+
+%#include "xdr/Stellar-types.h"
+
+namespace stellar
+{
+
+typedef PublicKey AccountID;
+typedef opaque Thresholds[4];
+typedef string string32<32>;
+typedef string string64<64>;
+typedef int64 SequenceNumber;
+typedef uint64 TimePoint;
+typedef opaque DataValue<64>;
+
+// 1-4 alphanumeric characters right-padded with 0 bytes
+typedef opaque AssetCode4[4];
+
+// 5-12 alphanumeric characters right-padded with 0 bytes
+typedef opaque AssetCode12[12];
+
+enum AssetType
+{
+    ASSET_TYPE_NATIVE = 0,
+    ASSET_TYPE_CREDIT_ALPHANUM4 = 1,
+    ASSET_TYPE_CREDIT_ALPHANUM12 = 2
+};
+
+union Asset switch (AssetType type)
+{
+case ASSET_TYPE_NATIVE: // Not credit
+    void;
+
+case ASSET_TYPE_CREDIT_ALPHANUM4:
+    struct
+    {
+        AssetCode4 assetCode;
+        AccountID issuer;
+    } alphaNum4;
+
+case ASSET_TYPE_CREDIT_ALPHANUM12:
+    struct
+    {
+        AssetCode12 assetCode;
+        AccountID issuer;
+    } alphaNum12;
+
+    // add other asset types here in the future
+};
+
+// price in fractional representation
+struct Price
+{
+    int32 n; // numerator
+    int32 d; // denominator
+};
+
+struct Liabilities
+{
+    int64 buying;
+    int64 selling;
+};
+
+// the 'Thresholds' type is packed uint8_t values
+// defined by these indexes
+enum ThresholdIndexes
+{
+    THRESHOLD_MASTER_WEIGHT = 0,
+    THRESHOLD_LOW = 1,
+    THRESHOLD_MED = 2,
+    THRESHOLD_HIGH = 3
+};
+
+enum LedgerEntryType
+{
+    ACCOUNT = 0,
+    TRUSTLINE = 1,
+    OFFER = 2,
+    DATA = 3,
+    CLAIMABLE_BALANCE = 4
+};
+
+struct Signer
+{
+    SignerKey key;
+    uint32 weight; // really only need 1 byte
+};
+
+enum AccountFlags
+{ // masks for each flag
+
+    // Flags set on issuer accounts
+    // TrustLines are created with authorized set to "false" requiring
+    // the issuer to set it for each TrustLine
+    AUTH_REQUIRED_FLAG = 0x1,
+    // If set, the authorized flag in TrustLines can be cleared
+    // otherwise, authorization cannot be revoked
+    AUTH_REVOCABLE_FLAG = 0x2,
+    // Once set, causes all AUTH_* flags to be read-only
+    AUTH_IMMUTABLE_FLAG = 0x4
+};
+
+// mask for all valid flags
+const MASK_ACCOUNT_FLAGS = 0x7;
+
+// maximum number of signers
+const MAX_SIGNERS = 20;
+
+typedef AccountID* SponsorshipDescriptor;
+
+struct AccountEntryExtensionV2
+{
+    uint32 numSponsored;
+    uint32 numSponsoring;
+    SponsorshipDescriptor signerSponsoringIDs<MAX_SIGNERS>;
+
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+struct AccountEntryExtensionV1
+{
+    Liabilities liabilities;
+
+    union switch (int v)
+    {
+    case 0:
+        void;
+    case 2:
+        AccountEntryExtensionV2 v2;
+    }
+    ext;
+};
+
+/* AccountEntry
+
+    Main entry representing a user in Stellar. All transactions are
+    performed using an account.
+
+    Other ledger entries created require an account.
+
+*/
+struct AccountEntry
+{
+    AccountID accountID;      // master public key for this account
+    int64 balance;            // in stroops
+    SequenceNumber seqNum;    // last sequence number used for this account
+    uint32 numSubEntries;     // number of sub-entries this account has
+                              // drives the reserve
+    AccountID* inflationDest; // Account to vote for during inflation
+    uint32 flags;             // see AccountFlags
+
+    string32 homeDomain; // can be used for reverse federation and memo lookup
+
+    // fields used for signatures
+    // thresholds stores unsigned bytes: [weight of master|low|medium|high]
+    Thresholds thresholds;
+
+    Signer signers<MAX_SIGNERS>; // possible signers for this account
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    case 1:
+        AccountEntryExtensionV1 v1;
+    }
+    ext;
+};
+
+/* TrustLineEntry
+    A trust line represents a specific trust relationship with
+    a credit/issuer (limit, authorization)
+    as well as the balance.
+*/
+
+enum TrustLineFlags
+{
+    // issuer has authorized account to perform transactions with its credit
+    AUTHORIZED_FLAG = 1,
+    // issuer has authorized account to maintain and reduce liabilities for its
+    // credit
+    AUTHORIZED_TO_MAINTAIN_LIABILITIES_FLAG = 2
+};
+
+// mask for all trustline flags
+const MASK_TRUSTLINE_FLAGS = 1;
+const MASK_TRUSTLINE_FLAGS_V13 = 3;
+
+struct TrustLineEntry
+{
+    AccountID accountID; // account this trustline belongs to
+    Asset asset;         // type of asset (with issuer)
+    int64 balance;       // how much of this asset the user has.
+                         // Asset defines the unit for this;
+
+    int64 limit;  // balance cannot be above this
+    uint32 flags; // see TrustLineFlags
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    case 1:
+        struct
+        {
+            Liabilities liabilities;
+
+            union switch (int v)
+            {
+            case 0:
+                void;
+            }
+            ext;
+        } v1;
+    }
+    ext;
+};
+
+enum OfferEntryFlags
+{
+    // issuer has authorized account to perform transactions with its credit
+    PASSIVE_FLAG = 1
+};
+
+// Mask for OfferEntry flags
+const MASK_OFFERENTRY_FLAGS = 1;
+
+/* OfferEntry
+    An offer is the building block of the offer book, they are automatically
+    claimed by payments when the price set by the owner is met.
+
+    For example an Offer is selling 10A where 1A is priced at 1.5B
+
+*/
+struct OfferEntry
+{
+    AccountID sellerID;
+    int64 offerID;
+    Asset selling; // A
+    Asset buying;  // B
+    int64 amount;  // amount of A
+
+    /* price for this offer:
+        price of A in terms of B
+        price=AmountB/AmountA=priceNumerator/priceDenominator
+        price is after fees
+    */
+    Price price;
+    uint32 flags; // see OfferEntryFlags
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+/* DataEntry
+    Data can be attached to accounts.
+*/
+struct DataEntry
+{
+    AccountID accountID; // account this data belongs to
+    string64 dataName;
+    DataValue dataValue;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+enum ClaimPredicateType
+{
+    CLAIM_PREDICATE_UNCONDITIONAL = 0,
+    CLAIM_PREDICATE_AND = 1,
+    CLAIM_PREDICATE_OR = 2,
+    CLAIM_PREDICATE_NOT = 3,
+    CLAIM_PREDICATE_BEFORE_ABSOLUTE_TIME = 4,
+    CLAIM_PREDICATE_BEFORE_RELATIVE_TIME = 5
+};
+
+union ClaimPredicate switch (ClaimPredicateType type)
+{
+case CLAIM_PREDICATE_UNCONDITIONAL:
+    void;
+case CLAIM_PREDICATE_AND:
+    ClaimPredicate andPredicates<2>;
+case CLAIM_PREDICATE_OR:
+    ClaimPredicate orPredicates<2>;
+case CLAIM_PREDICATE_NOT:
+    ClaimPredicate* notPredicate;
+case CLAIM_PREDICATE_BEFORE_ABSOLUTE_TIME:
+    int64 absBefore; // Predicate will be true if closeTime < absBefore
+case CLAIM_PREDICATE_BEFORE_RELATIVE_TIME:
+    int64 relBefore; // Seconds since closeTime of the ledger in which the
+                     // ClaimableBalanceEntry was created
+};
+
+enum ClaimantType
+{
+    CLAIMANT_TYPE_V0 = 0
+};
+
+union Claimant switch (ClaimantType type)
+{
+case CLAIMANT_TYPE_V0:
+    struct
+    {
+        AccountID destination;    // The account that can use this condition
+        ClaimPredicate predicate; // Claimable if predicate is true
+    } v0;
+};
+
+enum ClaimableBalanceIDType
+{
+    CLAIMABLE_BALANCE_ID_TYPE_V0 = 0
+};
+
+union ClaimableBalanceID switch (ClaimableBalanceIDType type)
+{
+case CLAIMABLE_BALANCE_ID_TYPE_V0:
+    Hash v0;
+};
+
+struct ClaimableBalanceEntry
+{
+    // Unique identifier for this ClaimableBalanceEntry
+    ClaimableBalanceID balanceID;
+
+    // List of claimants with associated predicate
+    Claimant claimants<10>;
+
+    // Any asset including native
+    Asset asset;
+
+    // Amount of asset
+    int64 amount;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+struct LedgerEntryExtensionV1
+{
+    SponsorshipDescriptor sponsoringID;
+
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+struct LedgerEntry
+{
+    uint32 lastModifiedLedgerSeq; // ledger the LedgerEntry was last changed
+
+    union switch (LedgerEntryType type)
+    {
+    case ACCOUNT:
+        AccountEntry account;
+    case TRUSTLINE:
+        TrustLineEntry trustLine;
+    case OFFER:
+        OfferEntry offer;
+    case DATA:
+        DataEntry data;
+    case CLAIMABLE_BALANCE:
+        ClaimableBalanceEntry claimableBalance;
+    }
+    data;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    case 1:
+        LedgerEntryExtensionV1 v1;
+    }
+    ext;
+};
+
+union LedgerKey switch (LedgerEntryType type)
+{
+case ACCOUNT:
+    struct
+    {
+        AccountID accountID;
+    } account;
+
+case TRUSTLINE:
+    struct
+    {
+        AccountID accountID;
+        Asset asset;
+    } trustLine;
+
+case OFFER:
+    struct
+    {
+        AccountID sellerID;
+        int64 offerID;
+    } offer;
+
+case DATA:
+    struct
+    {
+        AccountID accountID;
+        string64 dataName;
+    } data;
+
+case CLAIMABLE_BALANCE:
+    struct
+    {
+        ClaimableBalanceID balanceID;
+    } claimableBalance;
+};
+
+// list of all envelope types used in the application
+// those are prefixes used when building signatures for
+// the respective envelopes
+enum EnvelopeType
+{
+    ENVELOPE_TYPE_TX_V0 = 0,
+    ENVELOPE_TYPE_SCP = 1,
+    ENVELOPE_TYPE_TX = 2,
+    ENVELOPE_TYPE_AUTH = 3,
+    ENVELOPE_TYPE_SCPVALUE = 4,
+    ENVELOPE_TYPE_TX_FEE_BUMP = 5,
+    ENVELOPE_TYPE_OP_ID = 6
+};
+}
+
+// Copyright 2015 Stellar Development Foundation and contributors. Licensed
+// under the Apache License, Version 2.0. See the COPYING file at the root
+// of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
+
 %#include "xdr/Stellar-ledger-entries.h"
 
 namespace stellar
@@ -1275,5 +1814,663 @@ struct TransactionResult
         void;
     }
     ext;
+};
+}
+
+// Copyright 2015 Stellar Development Foundation and contributors. Licensed
+// under the Apache License, Version 2.0. See the COPYING file at the root
+// of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
+
+%#include "xdr/Stellar-SCP.h"
+%#include "xdr/Stellar-transaction.h"
+
+namespace stellar
+{
+
+typedef opaque UpgradeType<128>;
+
+enum StellarValueType
+{
+    STELLAR_VALUE_BASIC = 0,
+    STELLAR_VALUE_SIGNED = 1
+};
+
+struct LedgerCloseValueSignature
+{
+    NodeID nodeID;       // which node introduced the value
+    Signature signature; // nodeID's signature
+};
+
+/* StellarValue is the value used by SCP to reach consensus on a given ledger
+ */
+struct StellarValue
+{
+    Hash txSetHash;      // transaction set to apply to previous ledger
+    TimePoint closeTime; // network close time
+
+    // upgrades to apply to the previous ledger (usually empty)
+    // this is a vector of encoded 'LedgerUpgrade' so that nodes can drop
+    // unknown steps during consensus if needed.
+    // see notes below on 'LedgerUpgrade' for more detail
+    // max size is dictated by number of upgrade types (+ room for future)
+    UpgradeType upgrades<6>;
+
+    // reserved for future use
+    union switch (StellarValueType v)
+    {
+    case STELLAR_VALUE_BASIC:
+        void;
+    case STELLAR_VALUE_SIGNED:
+        LedgerCloseValueSignature lcValueSignature;
+    }
+    ext;
+};
+
+/* The LedgerHeader is the highest level structure representing the
+ * state of a ledger, cryptographically linked to previous ledgers.
+ */
+struct LedgerHeader
+{
+    uint32 ledgerVersion;    // the protocol version of the ledger
+    Hash previousLedgerHash; // hash of the previous ledger header
+    StellarValue scpValue;   // what consensus agreed to
+    Hash txSetResultHash;    // the TransactionResultSet that led to this ledger
+    Hash bucketListHash;     // hash of the ledger state
+
+    uint32 ledgerSeq; // sequence number of this ledger
+
+    int64 totalCoins; // total number of stroops in existence.
+                      // 10,000,000 stroops in 1 XLM
+
+    int64 feePool;       // fees burned since last inflation run
+    uint32 inflationSeq; // inflation sequence number
+
+    uint64 idPool; // last used global ID, used for generating objects
+
+    uint32 baseFee;     // base fee per operation in stroops
+    uint32 baseReserve; // account base reserve in stroops
+
+    uint32 maxTxSetSize; // maximum size a transaction set can be
+
+    Hash skipList[4]; // hashes of ledgers in the past. allows you to jump back
+                      // in time without walking the chain back ledger by ledger
+                      // each slot contains the oldest ledger that is mod of
+                      // either 50  5000  50000 or 500000 depending on index
+                      // skipList[0] mod(50), skipList[1] mod(5000), etc
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+/* Ledger upgrades
+note that the `upgrades` field from StellarValue is normalized such that
+it only contains one entry per LedgerUpgradeType, and entries are sorted
+in ascending order
+*/
+enum LedgerUpgradeType
+{
+    LEDGER_UPGRADE_VERSION = 1,
+    LEDGER_UPGRADE_BASE_FEE = 2,
+    LEDGER_UPGRADE_MAX_TX_SET_SIZE = 3,
+    LEDGER_UPGRADE_BASE_RESERVE = 4
+};
+
+union LedgerUpgrade switch (LedgerUpgradeType type)
+{
+case LEDGER_UPGRADE_VERSION:
+    uint32 newLedgerVersion; // update ledgerVersion
+case LEDGER_UPGRADE_BASE_FEE:
+    uint32 newBaseFee; // update baseFee
+case LEDGER_UPGRADE_MAX_TX_SET_SIZE:
+    uint32 newMaxTxSetSize; // update maxTxSetSize
+case LEDGER_UPGRADE_BASE_RESERVE:
+    uint32 newBaseReserve; // update baseReserve
+};
+
+/* Entries used to define the bucket list */
+enum BucketEntryType
+{
+    METAENTRY =
+        -1, // At-and-after protocol 11: bucket metadata, should come first.
+    LIVEENTRY = 0, // Before protocol 11: created-or-updated;
+                   // At-and-after protocol 11: only updated.
+    DEADENTRY = 1,
+    INITENTRY = 2 // At-and-after protocol 11: only created.
+};
+
+struct BucketMetadata
+{
+    // Indicates the protocol version used to create / merge this bucket.
+    uint32 ledgerVersion;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+union BucketEntry switch (BucketEntryType type)
+{
+case LIVEENTRY:
+case INITENTRY:
+    LedgerEntry liveEntry;
+
+case DEADENTRY:
+    LedgerKey deadEntry;
+case METAENTRY:
+    BucketMetadata metaEntry;
+};
+
+// Transaction sets are the unit used by SCP to decide on transitions
+// between ledgers
+struct TransactionSet
+{
+    Hash previousLedgerHash;
+    TransactionEnvelope txs<>;
+};
+
+struct TransactionResultPair
+{
+    Hash transactionHash;
+    TransactionResult result; // result for the transaction
+};
+
+// TransactionResultSet is used to recover results between ledgers
+struct TransactionResultSet
+{
+    TransactionResultPair results<>;
+};
+
+// Entries below are used in the historical subsystem
+
+struct TransactionHistoryEntry
+{
+    uint32 ledgerSeq;
+    TransactionSet txSet;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+struct TransactionHistoryResultEntry
+{
+    uint32 ledgerSeq;
+    TransactionResultSet txResultSet;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+struct LedgerHeaderHistoryEntry
+{
+    Hash hash;
+    LedgerHeader header;
+
+    // reserved for future use
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+};
+
+// historical SCP messages
+
+struct LedgerSCPMessages
+{
+    uint32 ledgerSeq;
+    SCPEnvelope messages<>;
+};
+
+// note: ledgerMessages may refer to any quorumSets encountered
+// in the file so far, not just the one from this entry
+struct SCPHistoryEntryV0
+{
+    SCPQuorumSet quorumSets<>; // additional quorum sets used by ledgerMessages
+    LedgerSCPMessages ledgerMessages;
+};
+
+// SCP history file is an array of these
+union SCPHistoryEntry switch (int v)
+{
+case 0:
+    SCPHistoryEntryV0 v0;
+};
+
+// represents the meta in the transaction table history
+
+// STATE is emitted every time a ledger entry is modified/deleted
+// and the entry was not already modified in the current ledger
+
+enum LedgerEntryChangeType
+{
+    LEDGER_ENTRY_CREATED = 0, // entry was added to the ledger
+    LEDGER_ENTRY_UPDATED = 1, // entry was modified in the ledger
+    LEDGER_ENTRY_REMOVED = 2, // entry was removed from the ledger
+    LEDGER_ENTRY_STATE = 3    // value of the entry
+};
+
+union LedgerEntryChange switch (LedgerEntryChangeType type)
+{
+case LEDGER_ENTRY_CREATED:
+    LedgerEntry created;
+case LEDGER_ENTRY_UPDATED:
+    LedgerEntry updated;
+case LEDGER_ENTRY_REMOVED:
+    LedgerKey removed;
+case LEDGER_ENTRY_STATE:
+    LedgerEntry state;
+};
+
+typedef LedgerEntryChange LedgerEntryChanges<>;
+
+struct OperationMeta
+{
+    LedgerEntryChanges changes;
+};
+
+struct TransactionMetaV1
+{
+    LedgerEntryChanges txChanges; // tx level changes if any
+    OperationMeta operations<>;   // meta for each operation
+};
+
+struct TransactionMetaV2
+{
+    LedgerEntryChanges txChangesBefore; // tx level changes before operations
+                                        // are applied if any
+    OperationMeta operations<>;         // meta for each operation
+    LedgerEntryChanges txChangesAfter;  // tx level changes after operations are
+                                        // applied if any
+};
+
+// this is the meta produced when applying transactions
+// it does not include pre-apply updates such as fees
+union TransactionMeta switch (int v)
+{
+case 0:
+    OperationMeta operations<>;
+case 1:
+    TransactionMetaV1 v1;
+case 2:
+    TransactionMetaV2 v2;
+};
+
+// This struct groups together changes on a per transaction basis
+// note however that fees and transaction application are done in separate
+// phases
+struct TransactionResultMeta
+{
+    TransactionResultPair result;
+    LedgerEntryChanges feeProcessing;
+    TransactionMeta txApplyProcessing;
+};
+
+// this represents a single upgrade that was performed as part of a ledger
+// upgrade
+struct UpgradeEntryMeta
+{
+    LedgerUpgrade upgrade;
+    LedgerEntryChanges changes;
+};
+
+struct LedgerCloseMetaV0
+{
+    LedgerHeaderHistoryEntry ledgerHeader;
+    // NB: txSet is sorted in "Hash order"
+    TransactionSet txSet;
+
+    // NB: transactions are sorted in apply order here
+    // fees for all transactions are processed first
+    // followed by applying transactions
+    TransactionResultMeta txProcessing<>;
+
+    // upgrades are applied last
+    UpgradeEntryMeta upgradesProcessing<>;
+
+    // other misc information attached to the ledger close
+    SCPHistoryEntry scpInfo<>;
+};
+
+union LedgerCloseMeta switch (int v)
+{
+case 0:
+    LedgerCloseMetaV0 v0;
+};
+}
+
+// Copyright 2015 Stellar Development Foundation and contributors. Licensed
+// under the Apache License, Version 2.0. See the COPYING file at the root
+// of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
+
+%#include "xdr/Stellar-ledger.h"
+
+namespace stellar
+{
+
+enum ErrorCode
+{
+    ERR_MISC = 0, // Unspecific error
+    ERR_DATA = 1, // Malformed data
+    ERR_CONF = 2, // Misconfiguration error
+    ERR_AUTH = 3, // Authentication failure
+    ERR_LOAD = 4  // System overloaded
+};
+
+struct Error
+{
+    ErrorCode code;
+    string msg<100>;
+};
+
+struct AuthCert
+{
+    Curve25519Public pubkey;
+    uint64 expiration;
+    Signature sig;
+};
+
+struct Hello
+{
+    uint32 ledgerVersion;
+    uint32 overlayVersion;
+    uint32 overlayMinVersion;
+    Hash networkID;
+    string versionStr<100>;
+    int listeningPort;
+    NodeID peerID;
+    AuthCert cert;
+    uint256 nonce;
+};
+
+struct Auth
+{
+    // Empty message, just to confirm
+    // establishment of MAC keys.
+    int unused;
+};
+
+enum IPAddrType
+{
+    IPv4 = 0,
+    IPv6 = 1
+};
+
+struct PeerAddress
+{
+    union switch (IPAddrType type)
+    {
+    case IPv4:
+        opaque ipv4[4];
+    case IPv6:
+        opaque ipv6[16];
+    }
+    ip;
+    uint32 port;
+    uint32 numFailures;
+};
+
+enum MessageType
+{
+    ERROR_MSG = 0,
+    AUTH = 2,
+    DONT_HAVE = 3,
+
+    GET_PEERS = 4, // gets a list of peers this guy knows about
+    PEERS = 5,
+
+    GET_TX_SET = 6, // gets a particular txset by hash
+    TX_SET = 7,
+
+    TRANSACTION = 8, // pass on a tx you have heard about
+
+    // SCP
+    GET_SCP_QUORUMSET = 9,
+    SCP_QUORUMSET = 10,
+    SCP_MESSAGE = 11,
+    GET_SCP_STATE = 12,
+
+    // new messages
+    HELLO = 13,
+
+    SURVEY_REQUEST = 14,
+    SURVEY_RESPONSE = 15
+};
+
+struct DontHave
+{
+    MessageType type;
+    uint256 reqHash;
+};
+
+enum SurveyMessageCommandType
+{
+    SURVEY_TOPOLOGY = 0
+};
+
+struct SurveyRequestMessage
+{
+    NodeID surveyorPeerID;
+    NodeID surveyedPeerID;
+    uint32 ledgerNum;
+    Curve25519Public encryptionKey;
+    SurveyMessageCommandType commandType;
+};
+
+struct SignedSurveyRequestMessage
+{
+    Signature requestSignature;
+    SurveyRequestMessage request;
+};
+
+typedef opaque EncryptedBody<64000>;
+struct SurveyResponseMessage
+{
+    NodeID surveyorPeerID;
+    NodeID surveyedPeerID;
+    uint32 ledgerNum;
+    SurveyMessageCommandType commandType;
+    EncryptedBody encryptedBody;
+};
+
+struct SignedSurveyResponseMessage
+{
+    Signature responseSignature;
+    SurveyResponseMessage response;
+};
+
+struct PeerStats
+{
+    NodeID id;
+    string versionStr<100>;
+    uint64 messagesRead;
+    uint64 messagesWritten;
+    uint64 bytesRead;
+    uint64 bytesWritten;
+    uint64 secondsConnected;
+
+    uint64 uniqueFloodBytesRecv;
+    uint64 duplicateFloodBytesRecv;
+    uint64 uniqueFetchBytesRecv;
+    uint64 duplicateFetchBytesRecv;
+
+    uint64 uniqueFloodMessageRecv;
+    uint64 duplicateFloodMessageRecv;
+    uint64 uniqueFetchMessageRecv;
+    uint64 duplicateFetchMessageRecv;
+};
+
+typedef PeerStats PeerStatList<25>;
+
+struct TopologyResponseBody
+{
+    PeerStatList inboundPeers;
+    PeerStatList outboundPeers;
+
+    uint32 totalInboundPeerCount;
+    uint32 totalOutboundPeerCount;
+};
+
+union SurveyResponseBody switch (SurveyMessageCommandType type)
+{
+case SURVEY_TOPOLOGY:
+    TopologyResponseBody topologyResponseBody;
+};
+
+union StellarMessage switch (MessageType type)
+{
+case ERROR_MSG:
+    Error error;
+case HELLO:
+    Hello hello;
+case AUTH:
+    Auth auth;
+case DONT_HAVE:
+    DontHave dontHave;
+case GET_PEERS:
+    void;
+case PEERS:
+    PeerAddress peers<100>;
+
+case GET_TX_SET:
+    uint256 txSetHash;
+case TX_SET:
+    TransactionSet txSet;
+
+case TRANSACTION:
+    TransactionEnvelope transaction;
+
+case SURVEY_REQUEST:
+    SignedSurveyRequestMessage signedSurveyRequestMessage;
+
+case SURVEY_RESPONSE:
+    SignedSurveyResponseMessage signedSurveyResponseMessage;
+
+// SCP
+case GET_SCP_QUORUMSET:
+    uint256 qSetHash;
+case SCP_QUORUMSET:
+    SCPQuorumSet qSet;
+case SCP_MESSAGE:
+    SCPEnvelope envelope;
+case GET_SCP_STATE:
+    uint32 getSCPLedgerSeq; // ledger seq requested ; if 0, requests the latest
+};
+
+union AuthenticatedMessage switch (uint32 v)
+{
+case 0:
+    struct
+    {
+        uint64 sequence;
+        StellarMessage message;
+        HmacSha256Mac mac;
+    } v0;
+};
+}
+
+// Copyright 2015 Stellar Development Foundation and contributors. Licensed
+// under the Apache License, Version 2.0. See the COPYING file at the root
+// of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
+
+%#include "xdr/Stellar-types.h"
+
+namespace stellar
+{
+
+typedef opaque Value<>;
+
+struct SCPBallot
+{
+    uint32 counter; // n
+    Value value;    // x
+};
+
+enum SCPStatementType
+{
+    SCP_ST_PREPARE = 0,
+    SCP_ST_CONFIRM = 1,
+    SCP_ST_EXTERNALIZE = 2,
+    SCP_ST_NOMINATE = 3
+};
+
+struct SCPNomination
+{
+    Hash quorumSetHash; // D
+    Value votes<>;      // X
+    Value accepted<>;   // Y
+};
+
+struct SCPStatement
+{
+    NodeID nodeID;    // v
+    uint64 slotIndex; // i
+
+    union switch (SCPStatementType type)
+    {
+    case SCP_ST_PREPARE:
+        struct
+        {
+            Hash quorumSetHash;       // D
+            SCPBallot ballot;         // b
+            SCPBallot* prepared;      // p
+            SCPBallot* preparedPrime; // p'
+            uint32 nC;                // c.n
+            uint32 nH;                // h.n
+        } prepare;
+    case SCP_ST_CONFIRM:
+        struct
+        {
+            SCPBallot ballot;   // b
+            uint32 nPrepared;   // p.n
+            uint32 nCommit;     // c.n
+            uint32 nH;          // h.n
+            Hash quorumSetHash; // D
+        } confirm;
+    case SCP_ST_EXTERNALIZE:
+        struct
+        {
+            SCPBallot commit;         // c
+            uint32 nH;                // h.n
+            Hash commitQuorumSetHash; // D used before EXTERNALIZE
+        } externalize;
+    case SCP_ST_NOMINATE:
+        SCPNomination nominate;
+    }
+    pledges;
+};
+
+struct SCPEnvelope
+{
+    SCPStatement statement;
+    Signature signature;
+};
+
+// supports things like: A,B,C,(D,E,F),(G,H,(I,J,K,L))
+// only allows 2 levels of nesting
+struct SCPQuorumSet
+{
+    uint32 threshold;
+    PublicKey validators<>;
+    SCPQuorumSet innerSets<>;
 };
 }
